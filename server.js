@@ -12,6 +12,7 @@ const authRoutes = require('./routes/auth');
 const workspaceRoutes = require('./routes/workspaces');
 const usageRoutes = require('./routes/usage');
 const chatRoutes = require('./routes/chats');
+const paymentRoutes = require('./routes/payment');
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 const app = express();
@@ -95,6 +96,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/usage', usageRoutes);
 app.use('/api/chats', chatRoutes);
+app.use('/api/payment', paymentRoutes);
 
 // ─── 404 Handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {

@@ -52,6 +52,10 @@ router.get('/', authMiddleware, async (req, res) => {
       totalQueries: 0,
     };
 
+    aggregated.storageUsed = Math.max(0, aggregated.storageUsed || 0);
+    aggregated.totalChunks = Math.max(0, aggregated.totalChunks || 0);
+    aggregated.totalQueries = Math.max(0, aggregated.totalQueries || 0);
+
     return res.status(200).json({
       success: true,
       usage: {

@@ -77,7 +77,7 @@ async function processFileAsync(source, file) {
         sourceType: source.sourceType,
         workspaceId: source.workspaceId.toString(),
         chunkIndex: chunk.chunkIndex,
-        text: chunk.text.substring(0, 500),
+        text: chunk.text,
       },
     }));
 
@@ -149,7 +149,7 @@ async function processUrlAsync(source, url) {
         sourceUrl: url,
         workspaceId: source.workspaceId.toString(),
         chunkIndex: chunk.chunkIndex,
-        text: chunk.text.substring(0, 500),
+        text: chunk.text,
       },
     }));
 
@@ -332,12 +332,13 @@ const deleteSource = async (req, res) => {
     }
 
     // Update workspace stats
+    const isCompleted = source.processingStatus === 'completed';
     await Workspace.findByIdAndUpdate(source.workspaceId, {
       $inc: {
-        sourceCount: source.processingStatus === 'completed' ? -1 : 0,
-        storageUsed: -(source.fileSize || 0),
-        totalChunks: -(source.chunkCount || 0),
-        totalVectors: -(source.vectorCount || 0),
+        sourceCount: isCompleted ? -1 : 0,
+        storageUsed: isCompleted ? -(source.fileSize || 0) : 0,
+        totalChunks: isCompleted ? -(source.chunkCount || 0) : 0,
+        totalVectors: isCompleted ? -(source.vectorCount || 0) : 0,
       },
       updatedAt: new Date(),
     });

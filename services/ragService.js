@@ -46,22 +46,16 @@ async function queryKnowledgeBase(
     };
   }
 
-  // 4. Enrich matches with MongoDB source metadata
+  // 4. Extract source IDs for metadata retrieval
   const sourceIds = [
     ...new Set(matches.map((m) => m.metadata?.sourceId).filter(Boolean)),
   ];
-  const sourceDocs = await Source.find({ _id: { $in: sourceIds } }).lean();
-  const sourceMap = {};
-  sourceDocs.forEach((s) => {
-    sourceMap[s._id.toString()] = s;
-  });
 
-  // 5. Build context from matched chunks
+  // 5. Build context from matched chunks (using metadata directly from Pinecone to avoid blocking)
   const contextChunks = matches.map((match, idx) => {
     const meta = match.metadata || {};
-    const sourceDoc = sourceMap[meta.sourceId] || null;
-    const sourceName = sourceDoc?.sourceName || meta.sourceName || 'Unknown Source';
-    const sourceType = sourceDoc?.sourceType || meta.sourceType || 'unknown';
+    const sourceName = meta.sourceName || 'Unknown Source';
+    const sourceType = meta.sourceType || 'unknown';
     return `[Source ${idx + 1}: ${sourceName} (${sourceType})]\n${meta.text || ''}`;
   });
 
@@ -80,14 +74,14 @@ async function queryKnowledgeBase(
       : '';
 
   // 7. Construct the prompt
-  const prompt = `You are an AI assistant for a knowledge base platform. Your job is to answer questions based ONLY on the context provided below.
+  const prompt = `You are a helpful AI assistant for a knowledge base platform. Answer the user's question based on the context provided below.
 
-STRICT RULES:
-- Answer ONLY using information from the provided context.
-- If the answer is not found in the context, clearly say: "I don't have enough information in the knowledge base to answer this question."
-- Always cite your sources by mentioning the document name (e.g., "According to [Source Name]...").
-- Be concise, accurate, and helpful.
-- Do not fabricate or assume information beyond what is provided.
+RULES:
+1. For general greetings (e.g., "hi", "hello", "hey", "how are you", "hii"), respond naturally and ask how you can help. You do not need to look at the context for greetings.
+2. For questions, answer based on the provided context. If the answer cannot be found in the context, clearly say: "I don't have enough information in the knowledge base to answer this question."
+3. If the user refers to themselves in the first person (e.g., "my name", "my experience", "who am I"), assume they are referring to the subject of the documents in the context (for example, the person named in an uploaded resume).
+4. Always cite your sources by mentioning the document name (e.g., "According to [Source Name]...").
+5. Be concise, accurate, and do not make up or assume facts outside the provided context (except for mapping the user's identity to the document subject as stated in rule 3).
 
 ${historyText ? `CONVERSATION HISTORY:\n${historyText}\n` : ''}
 CONTEXT FROM KNOWLEDGE BASE:
@@ -97,8 +91,12 @@ QUESTION: ${question}
 
 ANSWER:`;
 
-  // 8. Generate answer with Gemini
-  const result = await generativeModel.generateContent(prompt);
+  // 8. Generate answer with Gemini and enrich source metadata from MongoDB in parallel
+  const [result, sourceDocs] = await Promise.all([
+    generativeModel.generateContent(prompt),
+    Source.find({ _id: { $in: sourceIds } }).lean()
+  ]);
+
   const answer = result.response.text();
 
   // 9. Calculate confidence score from average similarity scores
@@ -111,7 +109,12 @@ ANSWER:`;
       : 0;
   const confidenceScore = Math.min(1, Math.max(0, avgSimilarity));
 
-  // 10. Build sources array for response
+  // 10. Build sources array for response (enrich with MongoDB metadata fetched in parallel)
+  const sourceMap = {};
+  sourceDocs.forEach((s) => {
+    sourceMap[s._id.toString()] = s;
+  });
+
   const sources = matches.map((match) => {
     const meta = match.metadata || {};
     const sourceDoc = sourceMap[meta.sourceId] || null;

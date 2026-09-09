@@ -27,11 +27,21 @@ const authMiddleware = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Attach user info to request
+    // Fetch fresh user from DB to get up-to-date plan status
+    const user = await User.findById(decoded.id).select('name email plan avatar');
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User belonging to this token no longer exists.',
+      });
+    }
+
+    // Attach fresh user info to request
     req.user = {
-      id: decoded.id,
-      email: decoded.email,
-      plan: decoded.plan,
+      id: user._id.toString(),
+      email: user.email,
+      plan: user.plan || 'free',
+      name: user.name,
     };
 
     next();

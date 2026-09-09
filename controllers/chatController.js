@@ -172,21 +172,22 @@ const sendMessage = async (req, res) => {
       updateData.title = content.trim().substring(0, 50);
     }
 
-    await Chat.findByIdAndUpdate(chatId, updateData);
-
-    // Increment workspace query count
-    await Workspace.findByIdAndUpdate(workspaceId, {
-      $inc: { queryCount: 1 },
-      updatedAt: new Date(),
-    });
-
-    // Update daily usage tracking
+    // Update chat, workspace and daily usage stats in the background (do not block the user response)
     const today = new Date().toISOString().split('T')[0];
-    await UsageTracking.findOneAndUpdate(
-      { userId: req.user.id, date: today },
-      { $inc: { queryCount: 1 } },
-      { upsert: true, new: true }
-    );
+    Promise.all([
+      Chat.findByIdAndUpdate(chatId, updateData),
+      Workspace.findByIdAndUpdate(workspaceId, {
+        $inc: { queryCount: 1 },
+        updatedAt: new Date(),
+      }),
+      UsageTracking.findOneAndUpdate(
+        { userId: req.user.id, date: today },
+        { $inc: { queryCount: 1 } },
+        { upsert: true }
+      )
+    ]).catch((err) => {
+      console.error('Error updating chat/workspace stats in background:', err);
+    });
 
     return res.status(200).json({
       success: true,

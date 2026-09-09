@@ -1,12 +1,15 @@
 const { embeddingModel } = require('../config/gemini');
 
 /**
- * Embeds a single text string using Gemini text-embedding-004.
+ * Embeds a single text string using gemini-embedding-001 with 1024 dimensions.
  * @param {string} text
  * @returns {Promise<number[]>}
  */
 async function embedText(text) {
-  const result = await embeddingModel.embedContent(text);
+  const result = await embeddingModel.embedContent({
+    content: { parts: [{ text }] },
+    outputDimensionality: 1024
+  });
   return result.embedding.values;
 }
 

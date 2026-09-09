@@ -15,6 +15,17 @@ const getWorkspaces = async (req, res) => {
       isArchived: false,
     }).sort({ updatedAt: -1 });
 
+    // Self-healing database: cleanup any negative counters
+    for (const ws of workspaces) {
+      if (ws.storageUsed < 0 || ws.sourceCount < 0 || ws.totalChunks < 0 || ws.totalVectors < 0) {
+        ws.storageUsed = Math.max(0, ws.storageUsed || 0);
+        ws.sourceCount = Math.max(0, ws.sourceCount || 0);
+        ws.totalChunks = Math.max(0, ws.totalChunks || 0);
+        ws.totalVectors = Math.max(0, ws.totalVectors || 0);
+        await ws.save();
+      }
+    }
+
     return res.status(200).json({
       success: true,
       count: workspaces.length,
@@ -220,6 +231,15 @@ const getWorkspaceStats = async (req, res) => {
       });
     }
 
+    // Self-healing database: cleanup negative counters for detail view
+    if (workspace.storageUsed < 0 || workspace.sourceCount < 0 || workspace.totalChunks < 0 || workspace.totalVectors < 0) {
+      workspace.storageUsed = Math.max(0, workspace.storageUsed || 0);
+      workspace.sourceCount = Math.max(0, workspace.sourceCount || 0);
+      workspace.totalChunks = Math.max(0, workspace.totalChunks || 0);
+      workspace.totalVectors = Math.max(0, workspace.totalVectors || 0);
+      await workspace.save();
+    }
+
     // Source breakdown by type
     const sourcesByType = await Source.aggregate([
       {
@@ -242,6 +262,13 @@ const getWorkspaceStats = async (req, res) => {
       .select('sourceName sourceType processingStatus fileSize createdAt chunkCount vectorCount')
       .sort({ createdAt: -1 });
 
+    const sourceBreakdown = { pdf: 0, docx: 0, url: 0 };
+    sourcesByType.forEach((item) => {
+      if (item._id && sourceBreakdown.hasOwnProperty(item._id)) {
+        sourceBreakdown[item._id] = item.count;
+      }
+    });
+
     return res.status(200).json({
       success: true,
       stats: {
@@ -251,6 +278,7 @@ const getWorkspaceStats = async (req, res) => {
         totalVectors: workspace.totalVectors,
         queryCount: workspace.queryCount,
         sourcesByType,
+        sourceBreakdown,
         sources,
       },
     });
